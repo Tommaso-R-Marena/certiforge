@@ -1,0 +1,9 @@
+[package]
+name = "forgeopt-cost"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Static cost models for CertIR (empirical costs live in forgeopt-bench)"
+
+[dependencies]
+certir = { workspace = true }

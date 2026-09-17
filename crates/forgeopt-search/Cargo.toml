@@ -1,0 +1,14 @@
+[package]
+name = "forgeopt-search"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Untrusted ForgeOpt search strategies (rewrites, enumeration, stochastic)"
+
+[dependencies]
+certir = { workspace = true }
+forgeopt-cost = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+certir-parser = { workspace = true }
