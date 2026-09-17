@@ -1,0 +1,22 @@
+{
+  "format_version": 1,
+  "created_at": "2026-09-17T02:00:22.580225339+00:00",
+  "tool_versions": {
+    "certiforge": "0.1.0",
+    "certir": "0.1.0"
+  },
+  "hashes": {
+    "certificates/equivalence.lean": "2171218edfefedbfb09c1a51e41684001fdd72bf2f778e498d923a18b24a29d9",
+    "certificates/functional.lean": "2171218edfefedbfb09c1a51e41684001fdd72bf2f778e498d923a18b24a29d9",
+    "effects.json": "46d4538152be6a23d50d1204e229ec5e71edffb0dac91cfba4cf5e6674acf338",
+    "optimized.certir": "7f300fbc11818fbfc0d9a920e532b1f80b0567e293149de26f2968703c262c13",
+    "program.certir": "ae80043085bc803cff8e1de087dbcfc80ea5c01f8c0afd98489f7812fd873945",
+    "spec.json": "4743574b8e42e72bfba411b6cf25eee0468619fce4c735975375b64f9866034d"
+  },
+  "has_functional_cert": true,
+  "has_equivalence_cert": true,
+  "effects": {
+    "allowed": [],
+    "note": "Phase I: pure programs; empty effect manifest."
+  }
+}

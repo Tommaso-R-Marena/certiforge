@@ -1,0 +1,5 @@
+{
+  "name": "certiforge",
+  "install": "bash scripts/bootstrap_wsl.sh || (export PATH=\"$HOME/.cargo/bin:/usr/local/cargo/bin:$HOME/.elan/bin:$PATH\" && rustup default stable && cargo fetch && (command -v elan >/dev/null || curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none) && export PATH=\"$HOME/.elan/bin:$PATH\" && (cd formal && lake build) && cargo build --workspace)",
+  "terminals": []
+}

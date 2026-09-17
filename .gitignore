@@ -1,0 +1,8 @@
+/target/
+**/target/
+formal/.lake/
+**/.lake/
+.idea/
+.vscode/
+*.swp
+.DS_Store

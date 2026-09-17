@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+title: CERTIFORGE
+message: If you use this software, please cite it as below.
+type: software
+authors:
+  - family-names: Marena
+    given-names: Tommaso R.
+repository-code: https://github.com/Tommaso-R-Marena/certiforge
+abstract: >-
+  Proof-carrying AI software with proof-preserving superoptimization.
+  Untrusted generators and optimizers; independently checkable certificates.
+license: Apache-2.0
+version: 0.1.0
