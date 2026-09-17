@@ -1,0 +1,42 @@
+[
+  {
+    "name": "and_xor_add_u8",
+    "original_cost": 4,
+    "optimized_cost": 1,
+    "improvement": 3,
+    "transformation": "and_xor_add_to_or",
+    "admitted": true,
+    "search_ms": 649,
+    "verify_note": "rejected 31 unsound/non-improving candidates"
+  },
+  {
+    "name": "add_self_u16",
+    "original_cost": 2,
+    "optimized_cost": 1,
+    "improvement": 1,
+    "transformation": "add_self_to_shl1",
+    "admitted": true,
+    "search_ms": 116,
+    "verify_note": "rejected 35 unsound/non-improving candidates"
+  },
+  {
+    "name": "xor_self_u8",
+    "original_cost": 1,
+    "optimized_cost": 0,
+    "improvement": 1,
+    "transformation": "xor_self",
+    "admitted": true,
+    "search_ms": 0,
+    "verify_note": "rejected 32 unsound/non-improving candidates"
+  },
+  {
+    "name": "and_zero_u8",
+    "original_cost": 1,
+    "optimized_cost": 0,
+    "improvement": 1,
+    "transformation": "and_zero",
+    "admitted": true,
+    "search_ms": 0,
+    "verify_note": "rejected 32 unsound/non-improving candidates"
+  }
+]

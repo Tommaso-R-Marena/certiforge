@@ -1,0 +1,6 @@
+wrote results/tcb_metrics.json
+
+  "untrusted_automation_loc_approx": 846,
+  "ratio_untrusted_over_trusted": 0.351,
+  "notes": "Trusted count includes Lean formal + Rust certir+package verifier. Untrusted includes ForgeOpt/search/bench/mutate/fuzz. Lean kernel and Rustc not included in LOC."
+}

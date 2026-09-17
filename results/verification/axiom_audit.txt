@@ -1,0 +1,7 @@
+'CertiForge.BitVecExamples.and_xor_eq_or' depends on axioms: [propext, Classical.choice, Lean.ofReduceBool, Quot.sound]
+'CertiForge.BitVecExamples.add_self_eq_shl1' depends on axioms: [propext,
+ Classical.choice,
+ Lean.ofReduceBool,
+ Quot.sound]
+'CertiForge.Examples.SwapAdd.body_equiv' depends on axioms: [propext, Classical.choice, Lean.ofReduceBool, Quot.sound]
+'CertiForge.accepted_package_sound' does not depend on any axioms

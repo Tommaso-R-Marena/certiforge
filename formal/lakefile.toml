@@ -1,0 +1,6 @@
+name = "CertiForge"
+version = "0.1.0"
+defaultTargets = ["CertiForge"]
+
+[[lean_lib]]
+name = "CertiForge"
