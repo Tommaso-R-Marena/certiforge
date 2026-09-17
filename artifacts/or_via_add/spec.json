@@ -1,0 +1,12 @@
+{
+  "name": "or_via_add",
+  "provenance": "human",
+  "description": "Phase I functional spec: optimized equiv reference",
+  "reference_program": "fn or_via_add_opt(x: u8, y: u8) -> u8 {\n  or(x, y)\n}\n",
+  "precondition": {
+    "kind": "true"
+  },
+  "postcondition": {
+    "kind": "equiv_to_reference"
+  }
+}

@@ -1,0 +1,3 @@
+fn add_self(x: u8) -> u8 {
+  add(x, x)
+}
