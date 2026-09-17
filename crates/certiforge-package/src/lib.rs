@@ -1,1 +1,1 @@
-PLACEHOLDER_WILL_REPLACE
+@/tmp/gh_batches/FULL_pkg.rs
