@@ -1,0 +1,13 @@
+[package]
+name = "certir-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Textual CertIR parser and pretty-printer"
+
+[dependencies]
+certir = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
