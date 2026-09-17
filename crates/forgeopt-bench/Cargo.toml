@@ -1,0 +1,17 @@
+[package]
+name = "forgeopt-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Local benchmark harness for ForgeOpt / CERTIFORGE"
+
+[dependencies]
+certir = { workspace = true }
+certir-parser = { workspace = true }
+certir-interpreter = { workspace = true }
+forgeopt = { workspace = true }
+forgeopt-cost = { workspace = true }
+forgeopt-search = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
