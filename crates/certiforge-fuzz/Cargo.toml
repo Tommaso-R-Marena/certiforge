@@ -1,0 +1,14 @@
+[package]
+name = "certiforge-fuzz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Differential / property fuzzing helpers for CertIR"
+
+[dependencies]
+certir = { workspace = true }
+certir-parser = { workspace = true }
+certir-interpreter = { workspace = true }
+certiforge-mutate = { workspace = true }
+proptest = { workspace = true }
+rand = { workspace = true }

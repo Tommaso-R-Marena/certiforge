@@ -1,0 +1,21 @@
+[package]
+name = "certiforge-package"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Certificate package format, hashing, build and verify"
+
+[dependencies]
+certir = { workspace = true }
+certir-parser = { workspace = true }
+certir-interpreter = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

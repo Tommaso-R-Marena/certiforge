@@ -1,0 +1,10 @@
+[package]
+name = "certiforge-mutate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Mutation operators for adversarial false-acceptance campaigns"
+
+[dependencies]
+certir = { workspace = true }
+rand = { workspace = true }
