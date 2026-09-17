@@ -357,7 +357,7 @@ fn mutate_ops(expr: &Expr, rng: &mut StdRng, ops: &[BinOp]) -> Expr {
         Expr::UnOp { op, expr } => Expr::UnOp {
             op: *op,
             expr: Box::new(mutate_ops(expr, rng, ops)),
-        }
+        },
         other => other.clone(),
     }
 }
