@@ -8,19 +8,45 @@ on:
       - '.github/workflows/pcs-kernel-compile.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lean:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install elan
+      - name: Build PCS Lean kernel and persist log
+        shell: bash
         run: |
-          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - name: Build PCS Lean kernel
-        working-directory: scratch/pcs-kernel/formal
-        run: |
-          lake build
-          ! grep -R --line-number --fixed-strings 'sorry' PCS.lean PCS
+          set +e
+          mkdir -p scratch/pcs-kernel-ci
+          {
+            echo "=== install elan ==="
+            curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+            export PATH="$HOME/.elan/bin:$PATH"
+            echo "=== versions ==="
+            lean --version
+            lake --version
+            echo "=== build ==="
+            cd scratch/pcs-kernel/formal
+            lake build
+            build_rc=$?
+            cd ../../..
+            echo "=== sorry audit ==="
+            if grep -R --line-number --fixed-strings 'sorry' scratch/pcs-kernel/formal/PCS.lean scratch/pcs-kernel/formal/PCS; then
+              sorry_rc=1
+            else
+              sorry_rc=0
+            fi
+            echo "build_rc=$build_rc sorry_rc=$sorry_rc"
+            if [ "$build_rc" -ne 0 ] || [ "$sorry_rc" -ne 0 ]; then
+              exit 1
+            fi
+          } > scratch/pcs-kernel-ci/build.log 2>&1
+          rc=$?
+          git config user.name "pcs-compile-harness"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scratch/pcs-kernel-ci/build.log
+          git commit -m "PCS compile harness log" || true
+          git push || true
+          exit "$rc"
