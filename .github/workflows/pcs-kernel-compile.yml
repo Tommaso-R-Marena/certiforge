@@ -20,7 +20,7 @@ jobs:
         run: |
           set +e
           mkdir -p scratch/pcs-kernel-ci
-          {
+          (
             echo "=== install elan ==="
             curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
             export PATH="$HOME/.elan/bin:$PATH"
@@ -42,7 +42,7 @@ jobs:
             if [ "$build_rc" -ne 0 ] || [ "$sorry_rc" -ne 0 ]; then
               exit 1
             fi
-          } > scratch/pcs-kernel-ci/build.log 2>&1
+          ) > scratch/pcs-kernel-ci/build.log 2>&1
           rc=$?
           git config user.name "pcs-compile-harness"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
