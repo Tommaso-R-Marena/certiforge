@@ -1,34 +1,71 @@
 name: CertiForge Verified Component
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: certiforge-public-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   rust-and-lean:
-    # Private component only; provision an isolated protected runner explicitly.
-    if: ${{ github.event.repository.private == true && github.ref_protected == true && vars.CERTIFORGE_VERIFICATION_ENABLED == 'true' }}
-    runs-on: [self-hosted, linux, x64, certiforge-ci]
-    timeout-minutes: 60
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '4'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Verify exact source and preprovisioned pinned tools
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Install pinned tools and verify exact source
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = '${{ github.sha }}'
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+          rustup override set 1.99.0
           test "$(rustc --version | cut -d ' ' -f 2)" = 1.99.0
-          (cd formal && lean --version | grep 'version 4.16.0')
+          source scripts/activate_lean_416.sh
+          lean --version | grep 'version 4.16.0'
+      - name: Complete Rust regression and lint gate
+        run: |
+          set -euo pipefail
           cargo fmt --all --check
           cargo test --workspace --locked
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo build --workspace --locked
+      - name: Actual Lean proofs, axiom audit and Rust/Lean differential replay
+        run: |
+          set -euo pipefail
           (cd formal && lake build && lake env lean CertiForge/AxiomAudit.lean)
           python3 scripts/differential_replay.py --output differential-replay.json
+          python3 -c 'import json; d=json.load(open("differential-replay.json")); assert d["passed"]==162 and not d["mismatches"] and d["refinement_proved"] is False'
+      - name: Real package build, verification and adversarial CLI campaign
+        run: bash scripts/test_all.sh
+      - name: Record successful exact-source verification
+        run: |
+          set -euo pipefail
+          {
+            echo 'CERTIFORGE_PUBLIC_COMPONENT_GATE_PASS'
+            echo 'tested_merge_sha=${{ github.sha }}'
+            echo 'source_head_sha=${{ github.event.pull_request.head.sha || github.sha }}'
+            rustc --version
+            lean --version
+            lake --version
+          } > public-build-identity.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ always() }}
         with:
           name: certiforge-differential-${{ github.run_id }}-${{ github.run_attempt }}
-          path: differential-replay.json
+          path: |
+            differential-replay.json
+            public-build-identity.txt
+            artifacts/or_via_add/
           retention-days: 14
