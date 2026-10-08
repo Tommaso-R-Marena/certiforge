@@ -48,7 +48,9 @@ jobs:
           python3 scripts/differential_replay.py --output differential-replay.json
           python3 -c 'import json; d=json.load(open("differential-replay.json")); assert d["passed"]==162 and not d["mismatches"] and d["refinement_proved"] is False'
       - name: Real package build, verification and adversarial CLI campaign
-        run: bash scripts/test_all.sh
+        run: |
+          set -euo pipefail
+          bash scripts/test_all.sh | tee package-attack-results.log
       - name: Record successful exact-source verification
         run: |
           set -euo pipefail
@@ -67,5 +69,5 @@ jobs:
           path: |
             differential-replay.json
             public-build-identity.txt
-            artifacts/or_via_add/
+            package-attack-results.log
           retention-days: 14
