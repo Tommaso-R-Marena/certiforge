@@ -45,8 +45,9 @@ jobs:
         run: |
           set -euo pipefail
           (cd formal && lake build && lake env lean CertiForge/AxiomAudit.lean)
+          test -z "$(git status --porcelain)"
           python3 scripts/differential_replay.py --output differential-replay.json
-          python3 -c 'import json; d=json.load(open("differential-replay.json")); assert d["passed"]==162 and not d["mismatches"] and d["refinement_proved"] is False'
+          python3 -c 'import json; d=json.load(open("differential-replay.json")); assert d["passed"]==162 and not d["mismatches"] and d["refinement_proved"] is False and d["source_dirty"] is False'
       - name: Real package build, verification and adversarial CLI campaign
         run: |
           set -euo pipefail
