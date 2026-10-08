@@ -1,7 +1,7 @@
 //! ForgeOpt — untrusted superoptimizer admitted only by independent checking.
 
-use certir::Program;
 use certiforge_package::check_equivalence;
+use certir::Program;
 use forgeopt_cost::program_cost;
 use forgeopt_search::{combined_search, Candidate, SearchConfig};
 use serde::Serialize;
@@ -90,10 +90,7 @@ mod tests {
 
     #[test]
     fn admits_or_rewrite_rejects_unsound() {
-        let p = parse_program(
-            "fn p(x: u8, y: u8) -> u8 { add(and(x, y), xor(x, y)) }",
-        )
-        .unwrap();
+        let p = parse_program("fn p(x: u8, y: u8) -> u8 { add(and(x, y), xor(x, y)) }").unwrap();
         let result = optimize(
             &p,
             SearchConfig {

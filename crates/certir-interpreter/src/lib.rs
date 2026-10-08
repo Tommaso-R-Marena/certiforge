@@ -48,19 +48,17 @@ fn eval_binop(op: BinOp, width: Width, a: u64, b: u64) -> u64 {
         BinOp::Or => a | b,
         BinOp::Xor => a ^ b,
         BinOp::Shl => {
-            let sh = b as u32;
-            if sh >= width.bits() {
+            if b >= u64::from(width.bits()) {
                 0
             } else {
-                a << sh
+                a << b
             }
         }
         BinOp::Lshr => {
-            let sh = b as u32;
-            if sh >= width.bits() {
+            if b >= u64::from(width.bits()) {
                 0
             } else {
-                a >> sh
+                a >> b
             }
         }
     };
@@ -90,9 +88,7 @@ pub fn eval_expr(store: &HashMap<String, Value>, expr: &Expr) -> Result<Value, E
             let v = eval_expr(store, expr)?;
             match (op, v) {
                 (UnOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
-                (UnOp::Not, Value::BitVec { width, bits }) => {
-                    Ok(Value::bitvec(width, !bits))
-                }
+                (UnOp::Not, Value::BitVec { width, bits }) => Ok(Value::bitvec(width, !bits)),
                 (UnOp::Neg, Value::BitVec { width, bits }) => {
                     Ok(Value::bitvec(width, bits.wrapping_neg()))
                 }
@@ -103,16 +99,11 @@ pub fn eval_expr(store: &HashMap<String, Value>, expr: &Expr) -> Result<Value, E
             let l = eval_expr(store, lhs)?;
             let r = eval_expr(store, rhs)?;
             match (l, r) {
-                (
-                    Value::BitVec {
-                        width: w1,
-                        bits: a,
-                    },
-                    Value::BitVec {
-                        width: w2,
-                        bits: b,
-                    },
-                ) if w1 == w2 => Ok(Value::bitvec(w1, eval_binop(*op, w1, a, b))),
+                (Value::BitVec { width: w1, bits: a }, Value::BitVec { width: w2, bits: b })
+                    if w1 == w2 =>
+                {
+                    Ok(Value::bitvec(w1, eval_binop(*op, w1, a, b)))
+                }
                 _ => Err(EvalError::Runtime("bad binop".into())),
             }
         }
@@ -120,10 +111,11 @@ pub fn eval_expr(store: &HashMap<String, Value>, expr: &Expr) -> Result<Value, E
             let l = eval_expr(store, lhs)?;
             let r = eval_expr(store, rhs)?;
             match (l, r) {
-                (
-                    Value::BitVec { width: w1, bits: a },
-                    Value::BitVec { width: w2, bits: b },
-                ) if w1 == w2 => Ok(Value::Bool(eval_cmp_bv(*op, a, b))),
+                (Value::BitVec { width: w1, bits: a }, Value::BitVec { width: w2, bits: b })
+                    if w1 == w2 =>
+                {
+                    Ok(Value::Bool(eval_cmp_bv(*op, a, b)))
+                }
                 (Value::Bool(a), Value::Bool(b)) => match op {
                     CmpOp::Eq => Ok(Value::Bool(a == b)),
                     CmpOp::Ne => Ok(Value::Bool(a != b)),
@@ -194,10 +186,7 @@ mod tests {
 
     #[test]
     fn and_xor_eq_or() {
-        let p = parse_program(
-            "fn p(x: u32, y: u32) -> u32 { add(and(x, y), xor(x, y)) }",
-        )
-        .unwrap();
+        let p = parse_program("fn p(x: u32, y: u32) -> u32 { add(and(x, y), xor(x, y)) }").unwrap();
         let q = parse_program("fn q(x: u32, y: u32) -> u32 { or(x, y) }").unwrap();
         let samples = vec![
             vec![Value::bitvec(Width::U32, 0), Value::bitvec(Width::U32, 0)],
@@ -223,5 +212,19 @@ mod tests {
         let bad = parse_program("fn q(x: u32) -> u32 { x }").unwrap();
         let samples = vec![vec![Value::bitvec(Width::U32, 1)]];
         assert!(!observationally_equal(&p, &bad, &samples).unwrap());
+    }
+
+    #[test]
+    fn large_u64_shift_does_not_truncate_to_u32() {
+        for op in ["shl", "lshr"] {
+            let p = parse_program(&format!(
+                "fn p(x: u64) -> u64 {{ {op}(x, u64(4294967296)) }}"
+            ))
+            .unwrap();
+            assert_eq!(
+                eval(&p, &[Value::bitvec(Width::U64, 7)]).unwrap(),
+                Value::bitvec(Width::U64, 0)
+            );
+        }
     }
 }

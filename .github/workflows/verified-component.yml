@@ -1,0 +1,34 @@
+name: CertiForge Verified Component
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rust-and-lean:
+    # Private component only; provision an isolated protected runner explicitly.
+    if: ${{ github.event.repository.private == true && github.ref_protected == true && vars.CERTIFORGE_VERIFICATION_ENABLED == 'true' }}
+    runs-on: [self-hosted, linux, x64, certiforge-ci]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact source and preprovisioned pinned tools
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ github.sha }}'
+          test "$(rustc --version | cut -d ' ' -f 2)" = 1.99.0
+          (cd formal && lean --version | grep 'version 4.16.0')
+          cargo fmt --all --check
+          cargo test --workspace --locked
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo build --workspace --locked
+          (cd formal && lake build && lake env lean CertiForge/AxiomAudit.lean)
+          python3 scripts/differential_replay.py --output differential-replay.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() }}
+        with:
+          name: certiforge-differential-${{ github.run_id }}-${{ github.run_attempt }}
+          path: differential-replay.json
+          retention-days: 14

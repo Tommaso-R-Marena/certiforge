@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use certiforge_package::{
-    build_package, canonical_json, sha256_hex, verify_package, Manifest, Postcondition,
-    Precondition, SpecDoc, VerifyResult,
+    build_package, canonical_json, sha256_hex, verification_evidence, verify_package, Manifest,
+    Postcondition, Precondition, SpecDoc, VerifyResult,
 };
 use certir_parser::{parse_program, pretty_program};
 use clap::{Parser, Subcommand};
@@ -14,7 +14,11 @@ use std::process::ExitCode;
 use tempfile::TempDir;
 
 #[derive(Parser, Debug)]
-#[command(name = "certiforge", version, about = "Proof-carrying AI software toolkit")]
+#[command(
+    name = "certiforge",
+    version,
+    about = "Proof-carrying AI software toolkit"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -23,7 +27,9 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Parse and type-check a CertIR program
-    Parse { file: PathBuf },
+    Parse {
+        file: PathBuf,
+    },
     /// Evaluate a program on decimal bitvector inputs
     Eval {
         file: PathBuf,
@@ -45,8 +51,12 @@ enum Commands {
         action: PackageCmd,
     },
     Benchmark,
-    Attack { artifact: PathBuf },
-    Audit { artifact: PathBuf },
+    Attack {
+        artifact: PathBuf,
+    },
+    Audit {
+        artifact: PathBuf,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -66,7 +76,11 @@ enum PackageCmd {
         #[arg(long)]
         equivalence_lean: Option<PathBuf>,
     },
-    Verify { artifact: PathBuf },
+    Verify {
+        artifact: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -164,10 +178,7 @@ fn run() -> Result<ExitCode> {
                             timeout_ms: 10_000,
                         },
                     );
-                    result
-                        .best
-                        .map(|b| b.program)
-                        .unwrap_or_else(|| p.clone())
+                    result.best.map(|b| b.program).unwrap_or_else(|| p.clone())
                 };
 
                 let lean_func = match functional_lean {
@@ -181,9 +192,9 @@ fn run() -> Result<ExitCode> {
 
                 let spec = SpecDoc {
                     name: spec_name.unwrap_or_else(|| p.name.clone()),
-                    provenance: "human".into(),
+                    provenance: "equiv-to-program".into(),
                     description: "Phase I functional spec: optimized equiv reference".into(),
-                    reference_program: Some(pretty_program(&q)),
+                    reference_program: Some(pretty_program(&p)),
                     precondition: Precondition::True,
                     postcondition: Postcondition::EquivToReference,
                 };
@@ -199,7 +210,17 @@ fn run() -> Result<ExitCode> {
                 eprintln!("wrote package {}", out.display());
                 Ok(ExitCode::SUCCESS)
             }
-            PackageCmd::Verify { artifact } => {
+            PackageCmd::Verify { artifact, json } => {
+                if json {
+                    let evidence = verification_evidence(&artifact)?;
+                    let accepted = evidence["result"]["result"] == "accept";
+                    println!("{}", serde_json::to_string(&evidence)?);
+                    return Ok(if accepted {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::from(2)
+                    });
+                }
                 let result = verify_package(&artifact)?;
                 match result {
                     VerifyResult::Accept => {
@@ -285,8 +306,7 @@ fn run_attacks(artifact: &Path) -> Result<ExitCode> {
     })?;
 
     run_one("modify_spec_vacuous", &|root| {
-        let mut spec: SpecDoc =
-            serde_json::from_str(&fs::read_to_string(root.join("spec.json"))?)?;
+        let mut spec: SpecDoc = serde_json::from_str(&fs::read_to_string(root.join("spec.json"))?)?;
         spec.precondition = Precondition::False;
         let text = canonical_json(&spec)?;
         let mut man: Manifest =
@@ -306,8 +326,7 @@ fn run_attacks(artifact: &Path) -> Result<ExitCode> {
     run_one("hash_substitution", &|root| {
         let mut man: Manifest =
             serde_json::from_str(&fs::read_to_string(root.join("manifest.json"))?)?;
-        man.hashes
-            .insert("program.certir".into(), "0".repeat(64));
+        man.hashes.insert("program.certir".into(), "0".repeat(64));
         fs::write(root.join("manifest.json"), canonical_json(&man)?)?;
         Ok(())
     })?;

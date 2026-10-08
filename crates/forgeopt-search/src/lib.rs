@@ -5,8 +5,8 @@
 
 use certir::{BinOp, Expr, Program};
 use forgeopt_cost::program_cost;
-use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 #[derive(Clone, Debug)]
 pub struct Candidate {
@@ -51,10 +51,7 @@ fn rewrite_expr(expr: &Expr, unsound: bool, default_width: certir::Width) -> Vec
                     Expr::BinOp {
                         op: BinOp::Shl,
                         lhs: lhs.clone(),
-                        rhs: Box::new(Expr::ConstBv {
-                            width: w,
-                            value: 1,
-                        }),
+                        rhs: Box::new(Expr::ConstBv { width: w, value: 1 }),
                     },
                     "add_self_to_shl1".into(),
                 ));
@@ -135,17 +132,9 @@ fn rewrite_expr(expr: &Expr, unsound: bool, default_width: certir::Width) -> Vec
             op: BinOp::Xor,
             lhs,
             rhs,
-        } => {
-            if lhs == rhs {
-                let w = extract_width_hint(lhs).unwrap_or(default_width);
-                out.push((
-                    Expr::ConstBv {
-                        width: w,
-                        value: 0,
-                    },
-                    "xor_self".into(),
-                ));
-            }
+        } if lhs == rhs => {
+            let w = extract_width_hint(lhs).unwrap_or(default_width);
+            out.push((Expr::ConstBv { width: w, value: 0 }, "xor_self".into()));
         }
         _ => {}
     }
@@ -377,17 +366,16 @@ mod tests {
 
     #[test]
     fn finds_or_rewrite() {
-        let p = parse_program(
-            "fn p(x: u32, y: u32) -> u32 { add(and(x, y), xor(x, y)) }",
-        )
-        .unwrap();
+        let p = parse_program("fn p(x: u32, y: u32) -> u32 { add(and(x, y), xor(x, y)) }").unwrap();
         let cfg = SearchConfig {
             enable_unsound_rules: false,
             ..Default::default()
         };
         let cands = local_rewrite_search(&p, &cfg);
         assert!(
-            cands.iter().any(|c| c.transformation.contains("and_xor_add_to_or")),
+            cands
+                .iter()
+                .any(|c| c.transformation.contains("and_xor_add_to_or")),
             "expected and_xor_add_to_or candidate, got {:?}",
             cands.iter().map(|c| &c.transformation).collect::<Vec<_>>()
         );
