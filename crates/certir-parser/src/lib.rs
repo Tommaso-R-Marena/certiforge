@@ -241,9 +241,7 @@ impl Parser {
 
     fn expect(&mut self, kind: &TokKind) -> Result<(), ParseError> {
         let t = self.peek().clone();
-        if std::mem::discriminant(&t.kind) == std::mem::discriminant(kind)
-            || t.kind == *kind
-        {
+        if std::mem::discriminant(&t.kind) == std::mem::discriminant(kind) || t.kind == *kind {
             // For Ident/Number we only match variant shape above; handle exactly:
             match (&t.kind, kind) {
                 (TokKind::Fn, TokKind::Fn)
@@ -310,9 +308,7 @@ impl Parser {
                 Err(ParseError::At {
                     line: t.line,
                     col: t.col,
-                    message: format!(
-                        "bare integer {n}; use width constructor e.g. u32({n})"
-                    ),
+                    message: format!("bare integer {n}; use width constructor e.g. u32({n})"),
                 })
             }
             TokKind::Ident(name) => {

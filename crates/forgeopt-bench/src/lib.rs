@@ -26,18 +26,9 @@ pub fn run_smoke_suite() -> Vec<BenchCaseResult> {
             "and_xor_add_u8",
             "fn p(x: u8, y: u8) -> u8 { add(and(x, y), xor(x, y)) }",
         ),
-        (
-            "add_self_u16",
-            "fn p(x: u16) -> u16 { add(x, x) }",
-        ),
-        (
-            "xor_self_u8",
-            "fn p(x: u8) -> u8 { xor(x, x) }",
-        ),
-        (
-            "and_zero_u8",
-            "fn p(x: u8) -> u8 { and(x, u8(0)) }",
-        ),
+        ("add_self_u16", "fn p(x: u16) -> u16 { add(x, x) }"),
+        ("xor_self_u8", "fn p(x: u8) -> u8 { xor(x, x) }"),
+        ("and_zero_u8", "fn p(x: u8) -> u8 { and(x, u8(0)) }"),
     ];
 
     let mut results = Vec::new();

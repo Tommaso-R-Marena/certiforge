@@ -241,6 +241,8 @@ pub struct Program {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TypeError {
+    #[error("duplicate parameter `{0}`")]
+    DuplicateParam(String),
     #[error("undefined variable `{0}`")]
     UndefinedVar(String),
     #[error("type mismatch: expected {expected}, got {got}")]
@@ -252,17 +254,16 @@ pub enum TypeError {
 pub type Env = Vec<(String, Ty)>;
 
 pub fn lookup(env: &Env, name: &str) -> Option<Ty> {
-    env.iter()
-        .rev()
-        .find(|(n, _)| n == name)
-        .map(|(_, t)| *t)
+    env.iter().rev().find(|(n, _)| n == name).map(|(_, t)| *t)
 }
 
 pub fn type_of(env: &Env, expr: &Expr) -> Result<Ty, TypeError> {
     match expr {
         Expr::ConstBool { .. } => Ok(Ty::Bool),
         Expr::ConstBv { width, .. } => Ok(Ty::BitVec(*width)),
-        Expr::Var { name } => lookup(env, name).ok_or_else(|| TypeError::UndefinedVar(name.clone())),
+        Expr::Var { name } => {
+            lookup(env, name).ok_or_else(|| TypeError::UndefinedVar(name.clone()))
+        }
         Expr::UnOp { op, expr } => {
             let t = type_of(env, expr)?;
             match (op, t) {
@@ -316,13 +317,16 @@ pub fn type_of(env: &Env, expr: &Expr) -> Result<Ty, TypeError> {
 
 impl Program {
     pub fn env(&self) -> Env {
-        self.params
-            .iter()
-            .map(|p| (p.name.clone(), p.ty))
-            .collect()
+        self.params.iter().map(|p| (p.name.clone(), p.ty)).collect()
     }
 
     pub fn check(&self) -> Result<(), TypeError> {
+        let mut names = std::collections::BTreeSet::new();
+        for param in &self.params {
+            if !names.insert(&param.name) {
+                return Err(TypeError::DuplicateParam(param.name.clone()));
+            }
+        }
         let ty = type_of(&self.env(), &self.body)?;
         if ty != self.ret_ty {
             return Err(TypeError::Mismatch {
@@ -356,21 +360,13 @@ mod tests {
                 op: BinOp::Add,
                 lhs: Box::new(Expr::BinOp {
                     op: BinOp::And,
-                    lhs: Box::new(Expr::Var {
-                        name: "x".into(),
-                    }),
-                    rhs: Box::new(Expr::Var {
-                        name: "y".into(),
-                    }),
+                    lhs: Box::new(Expr::Var { name: "x".into() }),
+                    rhs: Box::new(Expr::Var { name: "y".into() }),
                 }),
                 rhs: Box::new(Expr::BinOp {
                     op: BinOp::Xor,
-                    lhs: Box::new(Expr::Var {
-                        name: "x".into(),
-                    }),
-                    rhs: Box::new(Expr::Var {
-                        name: "y".into(),
-                    }),
+                    lhs: Box::new(Expr::Var { name: "x".into() }),
+                    rhs: Box::new(Expr::Var { name: "y".into() }),
                 }),
             },
             ret_ty: Ty::BitVec(Width::U32),

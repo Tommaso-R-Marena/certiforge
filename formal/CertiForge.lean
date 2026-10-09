@@ -8,3 +8,4 @@ import CertiForge.Checker
 import CertiForge.Soundness
 import CertiForge.BitVec
 import CertiForge.Examples.SwapAdd
+import CertiForge.Examples.BoundDemo

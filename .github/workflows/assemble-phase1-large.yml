@@ -1,16 +1,15 @@
 name: assemble-phase1-large
 on:
-  push:
-    paths:
-      - '.ci/assemble_payloads/**'
-      - '.github/workflows/assemble-phase1-large.yml'
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
   assemble:
-    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.private == true && github.ref_protected == true && vars.CERTIFORGE_LEGACY_ASSEMBLY_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # Archived reconstruction only: never enable on an integrated release branch.
       - name: Assemble large Phase I files
         run: |
           python3 << 'PY'

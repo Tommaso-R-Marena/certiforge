@@ -4,7 +4,7 @@
 
 ```bash
 cd formal
-lake env lean scripts/axiom_audit.lean   # or the checked-in audit file
+lake env lean CertiForge/AxiomAudit.lean
 ```
 
 ## Results (Lean 4.16.0)
@@ -23,7 +23,7 @@ Same axiom set (via `bv_decide`).
 
 ### `CertiForge.accepted_package_sound`
 
-**Does not depend on any axioms** (pure structural implication from `CheckedEvidence`).
+At the integrated revision the actual audit reports `propext` and `Quot.sound`. The theorem is a structural implication from supplied `CheckedEvidence`; it does not establish that the Rust verifier constructs that evidence.
 
 ## Interpretation
 
@@ -38,3 +38,7 @@ Same axiom set (via `bv_decide`).
 Phase I stores Lean theorem files in packages. Full `bv_check file.lrat` portable LRAT
 workflows are supported by Lean; packaging real LRAT blobs for every kernel is ongoing.
 Stubs are labeled as stubs and must not be treated as checked UNSAT proofs.
+
+## AST-bound demo and bounded shifts
+
+`Examples.BoundDemo.typed_input_equivalence` depends on `propext`, `Classical.choice`, `Lean.ofReduceBool`, and `Quot.sound`. `typed_output_specification` uses `propext` and `Quot.sound`. The shift-preservation dependency sets are printed by the same audit command. In particular, the computational SAT/LRAT path retains the documented code-generator trust; it is not silently imported into PCS scientific authority.

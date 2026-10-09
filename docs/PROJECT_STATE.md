@@ -29,8 +29,8 @@ Lean kernel + `ofReduceBool` + Rust verifier + SHA-256 + parser. See `docs/TCB.m
 ## Known unsoundness / gaps
 
 - Rust↔Lean semantics not proved (differential tests only).
-- Sampled equivalence on large domains is incomplete without a real Lean/LRAT equiv theorem
-  tied to the concrete program AST (Phase I requires substantive cert text + samples).
+- Large-domain package acceptance is now rejected. Small admitted domains are replayed exhaustively; hash-bound Lean text is not kernel checked by the Rust verifier.
+- The separately built `Examples/BoundDemo.lean` proves typed-input equivalence and the OR output specification for concrete u8 ASTs. This does not connect arbitrary certificate text or Rust execution to Lean.
 - Spec-intent gap remains (`docs/SPECIFICATION_GAP.md`).
 - No executable/native chain (`docs/EXECUTABLE_GAP.md`).
 - Effects are stubs.
@@ -49,3 +49,9 @@ Smoke suite: multiple admitted opts; see `certiforge benchmark`.
 1. Wire real `bv_check` LRAT files into packages for u32 kernels (not placeholders).
 2. Differential fuzz Lean `#eval` vs Rust interpreter on random CertIR.
 3. Expand mutation campaign; track false-acceptance over ≥10³ mutants.
+
+## Integrated campaign changes (2026-10-08)
+
+The expression evaluator is structurally recursive. Bounded shift evaluation avoids huge-natural runtime panics; `boundedShiftLeft_eq` and `boundedShiftRight_eq` prove preservation of the original mathematical operations. Package specification expressions and ranges are actually checked. Duplicate parameters, nonempty effect manifests, unknown package versions and unsupported domains reject. `package verify --json` separates exhaustive computational replay from formal proof and lists residual obligations. `SOURCE_DATE_EPOCH=0` gives deterministic build metadata.
+
+Run `python3 scripts/differential_replay.py --output /tmp/new-replay.json` after `cargo build --workspace --locked` and `cd formal && lake build`. This fresh experiment has 162 binary-operation comparisons (seed 20261008), not the unavailable historical 527-case experiment. Unary, comparison and select coverage remains outside this experiment. Source status and checker byte hash are recorded.

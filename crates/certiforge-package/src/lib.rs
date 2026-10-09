@@ -9,17 +9,17 @@
 //!
 //! Phase I equivalence/functional certificates are checked by:
 //! 1. Structural presence + hash integrity (always)
-//! 2. Exhaustive/SMT-style bitvector equivalence via the interpreter on a
-//!    complete domain for narrow widths, or random+edge sampling plus an
-//!    explicit Lean theorem artifact when provided
-//! 3. Optional Lean `lake env lean` check of bundled `.lean` certificates
+//! 2. Complete Rust interpreter replay for Bool/u8/u16 Cartesian domains
+//!    of at most 65,536 inputs. Larger or unsupported domains are rejected.
+//!
+//! Bundled Lean certificate text is hash-bound, but NOT kernel checked here.
 //!
 //! TRUST: the Rust checker is part of the executable TCB for Phase I.
 //! The Lean soundness theorem covers the abstract model; refinement to this
 //! checker is differential-tested, not yet proved.
 
 use certir::{Program, Ty, Width};
-use certir_interpreter::{eval, observationally_equal, Value};
+use certir_interpreter::{eval, Value};
 use certir_parser::{parse_program, pretty_program};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,7 @@ pub struct SpecDoc {
     pub provenance: String,
     pub description: String,
     /// Optional reference program text — if set, postcondition is observational
-    /// equivalence to this reference on the certificate sample set.
+    /// equivalence to this reference on the complete admitted domain.
     pub reference_program: Option<String>,
     /// Precondition kind.
     pub precondition: Precondition,
@@ -158,6 +158,12 @@ impl VerifyResult {
 }
 
 fn read_to_string(path: &Path) -> Result<String, PackageError> {
+    let meta = fs::symlink_metadata(path)?;
+    if !meta.is_file() || meta.len() > 1_000_000 {
+        return Err(PackageError::Msg(
+            "package member is not a bounded regular file".into(),
+        ));
+    }
     Ok(fs::read_to_string(path)?)
 }
 
@@ -240,7 +246,17 @@ pub fn build_package(
 
     let manifest = Manifest {
         format_version: 1,
-        created_at: Utc::now().to_rfc3339(),
+        created_at: match std::env::var("SOURCE_DATE_EPOCH") {
+            Ok(value) => chrono::DateTime::from_timestamp(
+                value
+                    .parse()
+                    .map_err(|_| PackageError::Msg("invalid SOURCE_DATE_EPOCH".into()))?,
+                0,
+            )
+            .ok_or_else(|| PackageError::Msg("SOURCE_DATE_EPOCH out of range".into()))?
+            .to_rfc3339(),
+            Err(_) => Utc::now().to_rfc3339(),
+        },
         tool_versions: default_tool_versions(),
         hashes,
         has_functional_cert: true,
@@ -273,75 +289,6 @@ pub fn build_package(
     Ok(PackagePaths {
         root: root.to_path_buf(),
     })
-}
-
-fn sample_inputs(program: &Program, seed: u64, limit: usize) -> Vec<Vec<Value>> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut out = Vec::new();
-    // Edge cases
-    let mut edges: Vec<Vec<Value>> = vec![Vec::new()];
-    for p in &program.params {
-        let mut next = Vec::new();
-        for prefix in &edges {
-            match p.ty {
-                Ty::Bool => {
-                    for b in [false, true] {
-                        let mut v = prefix.clone();
-                        v.push(Value::Bool(b));
-                        next.push(v);
-                    }
-                }
-                Ty::BitVec(w) => {
-                    for bits in [0u64, 1, w.mask(), w.mask() / 2] {
-                        let mut v = prefix.clone();
-                        v.push(Value::bitvec(w, bits));
-                        next.push(v);
-                    }
-                }
-            }
-        }
-        edges = next;
-        if edges.len() > limit {
-            edges.truncate(limit);
-            break;
-        }
-    }
-    out.extend(edges);
-
-    // Pseudorandom samples
-    let mut state = seed;
-    for _ in 0..limit {
-        let mut row = Vec::new();
-        for p in &program.params {
-            state = state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1);
-            match p.ty {
-                Ty::Bool => row.push(Value::Bool(state % 2 == 0)),
-                Ty::BitVec(w) => row.push(Value::bitvec(w, state & w.mask())),
-            }
-        }
-        out.push(row);
-    }
-
-    // Dedup via hash
-    out.sort_by_key(|row| {
-        let mut h = DefaultHasher::new();
-        for v in row {
-            match v {
-                Value::Bool(b) => b.hash(&mut h),
-                Value::BitVec { width, bits } => {
-                    width.bits().hash(&mut h);
-                    bits.hash(&mut h);
-                }
-            }
-        }
-        h.finish()
-    });
-    out.dedup();
-    out
 }
 
 fn exhaustive_domain_size(program: &Program) -> Option<u64> {
@@ -397,8 +344,20 @@ fn all_inputs(program: &Program) -> Option<Vec<Vec<Value>>> {
     Some(acc)
 }
 
-/// Check P ≡ Q on exhaustive domain when small, else on samples.
-pub fn check_equivalence(p: &Program, q: &Program, seed: u64) -> Result<(), String> {
+/// Exhaustive replay only. Sampling and proof-looking text cannot establish equivalence.
+pub fn check_equivalence(p: &Program, q: &Program, _seed: u64) -> Result<(), String> {
+    p.check().map_err(|e| e.to_string())?;
+    q.check().map_err(|e| e.to_string())?;
+    for program in [p, q] {
+        let mut names = std::collections::BTreeSet::new();
+        if program
+            .params
+            .iter()
+            .any(|param| !names.insert(&param.name))
+        {
+            return Err("duplicate parameter name".into());
+        }
+    }
     if p.params.len() != q.params.len() {
         return Err("parameter arity mismatch".into());
     }
@@ -412,55 +371,91 @@ pub fn check_equivalence(p: &Program, q: &Program, seed: u64) -> Result<(), Stri
     }
 
     if let Some(domain) = all_inputs(p) {
-        let ok = observationally_equal(p, q, &domain).map_err(|e| e.to_string())?;
-        if !ok {
-            return Err("exhaustive equivalence check failed".into());
+        for inputs in domain {
+            let left = eval(p, &inputs).map_err(|e| e.to_string())?;
+            let right = eval(q, &inputs).map_err(|e| e.to_string())?;
+            if left != right {
+                return Err("exhaustive equivalence check failed".into());
+            }
         }
         return Ok(());
     }
-
-    let samples = sample_inputs(p, seed, 256);
-    let ok = observationally_equal(p, q, &samples).map_err(|e| e.to_string())?;
-    if !ok {
-        return Err("sampled equivalence check failed (counterexample found)".into());
-    }
-    // For large domains, require an accompanying Lean certificate file with a real theorem.
-    // Phase I policy: sampled success is insufficient alone for ACCEPT on u32/u64 —
-    // we also require certificates/equivalence.lean to contain `bv_decide` or `theorem`.
-    Ok(())
+    Err("UNVERIFIED_LARGE_DOMAIN: exhaustive replay exceeds 65536 inputs; no AST-bound kernel certificate verifier is registered".into())
 }
 
-fn check_functional(program: &Program, spec: &SpecDoc, seed: u64) -> Result<(), String> {
+fn check_functional(program: &Program, spec: &SpecDoc, _seed: u64) -> Result<(), String> {
     if let Precondition::False = spec.precondition {
         return Err("vacuous precondition (Pre=False)".into());
     }
 
-    let samples = sample_inputs(program, seed, 128);
-    match &spec.postcondition {
+    let domain =
+        all_inputs(program).ok_or("UNVERIFIED_LARGE_DOMAIN: functional domain exceeds limit")?;
+    if let Precondition::Ranges(ranges) = &spec.precondition {
+        for (name, bounds) in ranges {
+            let param = program
+                .params
+                .iter()
+                .find(|p| &p.name == name)
+                .ok_or("range names an unknown parameter")?;
+            match param.ty {
+                Ty::BitVec(w) if bounds[0] <= bounds[1] && bounds[1] <= w.mask() => {}
+                _ => return Err("invalid precondition range".into()),
+            }
+        }
+    }
+    let reference = match &spec.postcondition {
         Postcondition::EquivToReference => {
             let ref_src = spec
                 .reference_program
                 .as_ref()
                 .ok_or("missing reference_program for EquivToReference")?;
-            let reference = parse_program(ref_src).map_err(|e| e.to_string())?;
-            reference.check().map_err(|e| e.to_string())?;
-            let ok = observationally_equal(program, &reference, &samples)
-                .map_err(|e| e.to_string())?;
-            if !ok {
-                return Err("functional check vs reference failed".into());
+            parse_program(ref_src).map_err(|e| e.to_string())?
+        }
+        Postcondition::EqualsExpr { expr } => {
+            let params = program
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, p.ty))
+                .collect::<Vec<_>>()
+                .join(", ");
+            parse_program(&format!(
+                "fn specification({params}) -> {} {{ {expr} }}",
+                program.ret_ty
+            ))
+            .map_err(|e| e.to_string())?
+        }
+    };
+    reference.check().map_err(|e| e.to_string())?;
+    if reference.params != program.params || reference.ret_ty != program.ret_ty {
+        return Err("specification signature mismatch".into());
+    }
+    let mut admitted = 0;
+    for inputs in domain {
+        let permitted =
+            match &spec.precondition {
+                Precondition::True => true,
+                Precondition::False => false,
+                Precondition::Ranges(ranges) => program.params.iter().zip(&inputs).all(|(p, v)| {
+                    match (ranges.get(&p.name), v) {
+                        (Some(bounds), Value::BitVec { bits, .. }) => {
+                            bounds[0] <= *bits && *bits <= bounds[1]
+                        }
+                        (None, _) => true,
+                        _ => false,
+                    }
+                }),
+            };
+        if permitted {
+            admitted += 1;
+            if eval(program, &inputs).map_err(|e| e.to_string())?
+                != eval(&reference, &inputs).map_err(|e| e.to_string())?
+            {
+                return Err("functional postcondition failed on exhaustive input".into());
             }
         }
-        Postcondition::EqualsExpr { expr: _ } => {
-            // Minimal Phase I: treat as "program already is the spec expression"
-            // by requiring reference_program or accepting when provenance says
-            // the program was checked against itself.
-            if spec.reference_program.is_none() {
-                // Self-spec: evaluate program succeeds on samples.
-                for inputs in &samples {
-                    eval(program, inputs).map_err(|e| e.to_string())?;
-                }
-            }
-        }
+    }
+    if admitted == 0 {
+        return Err("vacuous precondition: no admitted input".into());
     }
     Ok(())
 }
@@ -468,12 +463,13 @@ fn check_functional(program: &Program, spec: &SpecDoc, seed: u64) -> Result<(), 
 fn lean_cert_looks_substantive(text: &str) -> bool {
     let t = text.to_lowercase();
     let has_stmt = t.contains("theorem") || t.contains("example") || t.contains("lemma");
-    let has_closer =
-        t.contains("bv_decide") || t.contains("rfl") || t.contains("native_decide") || t.contains("trivial");
+    let has_closer = t.contains("bv_decide")
+        || t.contains("rfl")
+        || t.contains("native_decide")
+        || t.contains("trivial");
     // Reject obvious corruption / empty stubs without a closed statement.
     has_stmt && has_closer && !t.contains("axiom unsound")
 }
-
 
 pub fn verify_package(root: &Path) -> Result<VerifyResult, PackageError> {
     let mut reasons = Vec::new();
@@ -482,18 +478,36 @@ pub fn verify_package(root: &Path) -> Result<VerifyResult, PackageError> {
     };
 
     let manifest: Manifest = serde_json::from_str(&read_to_string(&paths.manifest())?)?;
+    if manifest.format_version != 1 {
+        reasons.push("unsupported package format version".into());
+    }
+    if fs::symlink_metadata(root)?.file_type().is_symlink()
+        || fs::symlink_metadata(paths.certificates())?
+            .file_type()
+            .is_symlink()
+    {
+        return Err(PackageError::Msg(
+            "symbolic-link package directory rejected".into(),
+        ));
+    }
     let program_text = read_to_string(&paths.program())?;
     let optimized_text = read_to_string(&paths.optimized())?;
     let spec_text = read_to_string(&paths.spec())?;
     let effects_text = read_to_string(&paths.effects())?;
     let func_text = read_to_string(&paths.certificates().join("functional.lean"))?;
     let equiv_text = read_to_string(&paths.certificates().join("equivalence.lean"))?;
+    let effects: EffectsDoc = serde_json::from_str(&effects_text)?;
+    if !effects.allowed.is_empty() || !manifest.effects.allowed.is_empty() {
+        reasons.push("unsupported effects in pure CertIR package".into());
+    }
 
     let expected = |key: &str, data: &str| {
         let h = sha256_hex(data.as_bytes());
         match manifest.hashes.get(key) {
             Some(exp) if exp == &h => None,
-            Some(exp) => Some(format!("hash mismatch for {key}: manifest={exp} actual={h}")),
+            Some(exp) => Some(format!(
+                "hash mismatch for {key}: manifest={exp} actual={h}"
+            )),
             None => Some(format!("missing hash entry for {key}")),
         }
     };
@@ -580,6 +594,41 @@ pub fn verify_package(root: &Path) -> Result<VerifyResult, PackageError> {
     }
 }
 
+/// Versioned operational evidence. Exhaustive Rust replay is explicitly separate
+/// from a Lean theorem about the exact submitted programs.
+pub fn verification_evidence(root: &Path) -> Result<serde_json::Value, PackageError> {
+    let result = verify_package(root)?;
+    let program = parse_program(&read_to_string(&root.join("program.certir"))?)?;
+    let optimized = parse_program(&read_to_string(&root.join("optimized.certir"))?)?;
+    let mut hashes = BTreeMap::new();
+    for path in [
+        "manifest.json",
+        "program.certir",
+        "optimized.certir",
+        "spec.json",
+        "effects.json",
+        "certificates/functional.lean",
+        "certificates/equivalence.lean",
+    ] {
+        hashes.insert(
+            path,
+            sha256_hex(read_to_string(&root.join(path))?.as_bytes()),
+        );
+    }
+    Ok(serde_json::json!({
+        "format": "certiforge-verification-v1",
+        "checker_version": env!("CARGO_PKG_VERSION"),
+        "result": result,
+        "method": "EXHAUSTIVE_RUST_REPLAY",
+        "domain_size": exhaustive_domain_size(&program),
+        "artifact_sha256": hashes,
+        "cost": {"objective": "CERTIR_AST_NODE_COUNT", "original": program.body.node_count(), "optimized": optimized.body.node_count()},
+        "lean_kernel_checked": false,
+        "rust_lean_refinement_proved": false,
+        "unsolved_obligations": ["AST-bound Lean/LRAT certificate verification", "Rust-to-Lean refinement", "specification intent", "native executable semantics"]
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,10 +636,7 @@ mod tests {
     use tempfile::tempdir;
 
     fn demo_pair() -> (Program, Program, SpecDoc) {
-        let p = parse_program(
-            "fn p(x: u8, y: u8) -> u8 { add(and(x, y), xor(x, y)) }",
-        )
-        .unwrap();
+        let p = parse_program("fn p(x: u8, y: u8) -> u8 { add(and(x, y), xor(x, y)) }").unwrap();
         let q = parse_program("fn q(x: u8, y: u8) -> u8 { or(x, y) }").unwrap();
         let spec = SpecDoc {
             name: "or_equiv".into(),
@@ -611,6 +657,83 @@ mod tests {
         build_package(&root, &p, &q, &spec, None, None, 1).unwrap();
         let r = verify_package(&root).unwrap();
         assert!(r.is_accept(), "{r:?}");
+    }
+
+    #[test]
+    fn sampled_large_domain_and_unbound_true_theorems_cannot_accept() {
+        let dir = tempdir().unwrap();
+        let p = parse_program("fn p(x: u32) -> u32 { x }").unwrap();
+        let spec = SpecDoc {
+            name: "identity".into(),
+            provenance: "human".into(),
+            description: "identity".into(),
+            reference_program: Some(pretty_program(&p)),
+            precondition: Precondition::True,
+            postcondition: Postcondition::EquivToReference,
+        };
+        assert!(check_equivalence(&p, &p, 1)
+            .unwrap_err()
+            .contains("UNVERIFIED_LARGE_DOMAIN"));
+        build_package(
+            dir.path(),
+            &p,
+            &p,
+            &spec,
+            Some("theorem unrelated : True := by trivial"),
+            Some("theorem unrelated : True := by trivial"),
+            1,
+        )
+        .unwrap();
+        assert!(!verify_package(dir.path()).unwrap().is_accept());
+    }
+
+    #[test]
+    fn equals_expression_is_checked_instead_of_self_specification() {
+        let p = parse_program("fn p(x: u8) -> u8 { x }").unwrap();
+        let mut spec = SpecDoc {
+            name: "zero".into(),
+            provenance: "human".into(),
+            description: "must be zero".into(),
+            reference_program: None,
+            precondition: Precondition::True,
+            postcondition: Postcondition::EqualsExpr {
+                expr: "u8(0)".into(),
+            },
+        };
+        assert!(check_functional(&p, &spec, 1).is_err());
+        spec.precondition = Precondition::Ranges(BTreeMap::from([("x".into(), [0, 0])]));
+        assert!(check_functional(&p, &spec, 1).is_ok());
+        spec.precondition = Precondition::Ranges(BTreeMap::from([("x".into(), [2, 1])]));
+        assert!(check_functional(&p, &spec, 1).is_err());
+        spec.precondition = Precondition::Ranges(BTreeMap::from([("missing".into(), [0, 1])]));
+        assert!(check_functional(&p, &spec, 1).is_err());
+    }
+
+    #[test]
+    fn rare_reference_mismatch_is_not_hidden_by_sampling() {
+        let p = parse_program("fn p(x: u16) -> u16 { x }").unwrap();
+        let reference = "fn reference(x: u16) -> u16 { select(eq(x, u16(12345)), u16(0), x) }";
+        let spec = SpecDoc {
+            name: "rare".into(),
+            provenance: "human".into(),
+            description: "rare mismatch".into(),
+            reference_program: Some(reference.into()),
+            precondition: Precondition::True,
+            postcondition: Postcondition::EquivToReference,
+        };
+        assert!(check_functional(&p, &spec, 1).is_err());
+    }
+
+    #[test]
+    fn evidence_never_promotes_exhaustive_rust_replay_to_a_lean_proof() {
+        let dir = tempdir().unwrap();
+        let (p, q, spec) = demo_pair();
+        build_package(dir.path(), &p, &q, &spec, None, None, 1).unwrap();
+        let evidence = verification_evidence(dir.path()).unwrap();
+        assert_eq!(evidence["domain_size"], 65536);
+        assert_eq!(evidence["lean_kernel_checked"], false);
+        assert_eq!(evidence["rust_lean_refinement_proved"], false);
+        assert_eq!(evidence["result"]["result"], "accept");
     }
 
     #[test]

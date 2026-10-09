@@ -25,6 +25,32 @@ def Store.lookup (σ : Store) (x : Var) : Option Value :=
 def maskNat (w : Width) (n : Nat) : Nat :=
   n % (2 ^ w.toNat)
 
+/-- Bound evaluation before constructing an enormous intermediate natural. -/
+def boundedShiftLeft {n : Nat} (a : BitVec n) (s : Nat) : BitVec n :=
+  if n ≤ s then 0 else a <<< s
+
+def boundedShiftRight {n : Nat} (a : BitVec n) (s : Nat) : BitVec n :=
+  if n ≤ s then 0 else a >>> s
+
+/-- The resource guard preserves the original mathematical shift semantics. -/
+theorem boundedShiftLeft_eq {n : Nat} (a : BitVec n) (s : Nat) :
+    boundedShiftLeft a s = a <<< s := by
+  unfold boundedShiftLeft
+  split
+  · rename_i h
+    ext i hi
+    have his : i < s := by omega
+    simp [BitVec.getLsbD_shiftLeft, his]
+  · rfl
+
+theorem boundedShiftRight_eq {n : Nat} (a : BitVec n) (s : Nat) :
+    boundedShiftRight a s = a >>> s := by
+  unfold boundedShiftRight
+  split
+  · rename_i h
+    exact (BitVec.ushiftRight_eq_zero h).symm
+  · rfl
+
 /-- Evaluate a binary bitvector operation. -/
 def evalBinOp {n : Nat} (op : BinOp) (a b : BitVec n) : BitVec n :=
   match op with
@@ -34,8 +60,8 @@ def evalBinOp {n : Nat} (op : BinOp) (a b : BitVec n) : BitVec n :=
   | .and  => a &&& b
   | .or   => a ||| b
   | .xor  => a ^^^ b
-  | .shl  => a <<< b.toNat
-  | .lshr => a >>> b.toNat
+  | .shl  => boundedShiftLeft a b.toNat
+  | .lshr => boundedShiftRight a b.toNat
 
 /-- Evaluate a comparison on bitvectors (unsigned). -/
 def evalCmpBv {n : Nat} (op : CmpOp) (a b : BitVec n) : Bool :=
@@ -55,7 +81,7 @@ def evalCmpBool (op : CmpOp) (a b : Bool) : Option Bool :=
   | _   => none
 
 /-- Expression evaluation. Returns `none` on type/runtime errors. -/
-partial def evalExpr (σ : Store) : Expr → Option Value
+def evalExpr (σ : Store) : Expr → Option Value
   | .constBool b => some (.bool b)
   | .constBv w n =>
       some (.bitvec w (BitVec.ofNat w.toNat (maskNat w n)))

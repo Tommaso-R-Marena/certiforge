@@ -1,16 +1,14 @@
 //! Differential and mutation fuzzing utilities.
 
+use certiforge_mutate::generate_mutants;
 use certir::{BinOp, Expr, Param, Program, Ty, Width};
 use certir_interpreter::{observationally_equal, Value};
-use certiforge_mutate::generate_mutants;
 use rand::{Rng, SeedableRng};
 
 pub fn random_expr<R: Rng>(rng: &mut R, width: Width, depth: u32) -> Expr {
     if depth == 0 || rng.gen_bool(0.3) {
         if rng.gen_bool(0.5) {
-            Expr::Var {
-                name: "x".into(),
-            }
+            Expr::Var { name: "x".into() }
         } else {
             Expr::ConstBv {
                 width,
