@@ -185,6 +185,50 @@ mod tests {
     use certir_parser::parse_program;
 
     #[test]
+    fn boolean_ordering_error_cannot_be_hidden_by_and_zero() {
+        let original = Program {
+            name: "p".into(),
+            params: vec![],
+            body: Expr::BinOp {
+                op: BinOp::And,
+                lhs: Box::new(Expr::Select {
+                    cond: Box::new(Expr::Cmp {
+                        op: CmpOp::Ult,
+                        lhs: Box::new(Expr::ConstBool { value: false }),
+                        rhs: Box::new(Expr::ConstBool { value: true }),
+                    }),
+                    then_expr: Box::new(Expr::ConstBv {
+                        width: Width::U8,
+                        value: 7,
+                    }),
+                    else_expr: Box::new(Expr::ConstBv {
+                        width: Width::U8,
+                        value: 7,
+                    }),
+                }),
+                rhs: Box::new(Expr::ConstBv {
+                    width: Width::U8,
+                    value: 0,
+                }),
+            },
+            ret_ty: Ty::BitVec(Width::U8),
+        };
+        let optimized = Program {
+            body: Expr::ConstBv {
+                width: Width::U8,
+                value: 0,
+            },
+            ..original.clone()
+        };
+        assert_eq!(original.check(), Err(certir::TypeError::BadOperands));
+        assert!(optimized.check().is_ok());
+        assert!(
+            matches!(eval(&original, &[]), Err(EvalError::Runtime(ref message)) if message == "bad bool cmp")
+        );
+        assert_eq!(eval(&optimized, &[]).unwrap(), Value::bitvec(Width::U8, 0));
+    }
+
+    #[test]
     fn and_xor_eq_or() {
         let p = parse_program("fn p(x: u32, y: u32) -> u32 { add(and(x, y), xor(x, y)) }").unwrap();
         let q = parse_program("fn q(x: u32, y: u32) -> u32 { or(x, y) }").unwrap();

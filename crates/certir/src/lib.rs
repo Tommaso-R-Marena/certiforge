@@ -281,12 +281,12 @@ pub fn type_of(env: &Env, expr: &Expr) -> Result<Ty, TypeError> {
                 _ => Err(TypeError::BadOperands),
             }
         }
-        Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { op, lhs, rhs } => {
             let tl = type_of(env, lhs)?;
             let tr = type_of(env, rhs)?;
             match (tl, tr) {
                 (Ty::BitVec(w1), Ty::BitVec(w2)) if w1 == w2 => Ok(Ty::Bool),
-                (Ty::Bool, Ty::Bool) => Ok(Ty::Bool),
+                (Ty::Bool, Ty::Bool) if matches!(op, CmpOp::Eq | CmpOp::Ne) => Ok(Ty::Bool),
                 _ => Err(TypeError::BadOperands),
             }
         }
@@ -341,6 +341,51 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boolean_comparisons_match_interpreter_support() {
+        for op in [
+            CmpOp::Eq,
+            CmpOp::Ne,
+            CmpOp::Ult,
+            CmpOp::Ule,
+            CmpOp::Ugt,
+            CmpOp::Uge,
+        ] {
+            let expr = Expr::Cmp {
+                op,
+                lhs: Box::new(Expr::ConstBool { value: false }),
+                rhs: Box::new(Expr::ConstBool { value: true }),
+            };
+            let expected = if matches!(op, CmpOp::Eq | CmpOp::Ne) {
+                Ok(Ty::Bool)
+            } else {
+                Err(TypeError::BadOperands)
+            };
+            assert_eq!(type_of(&vec![], &expr), expected);
+        }
+    }
+
+    #[test]
+    fn ordered_bitvector_comparisons_remain_supported() {
+        for width in [Width::U8, Width::U16, Width::U32, Width::U64] {
+            for op in [
+                CmpOp::Eq,
+                CmpOp::Ne,
+                CmpOp::Ult,
+                CmpOp::Ule,
+                CmpOp::Ugt,
+                CmpOp::Uge,
+            ] {
+                let expr = Expr::Cmp {
+                    op,
+                    lhs: Box::new(Expr::ConstBv { width, value: 0 }),
+                    rhs: Box::new(Expr::ConstBv { width, value: 1 }),
+                };
+                assert_eq!(type_of(&vec![], &expr), Ok(Ty::Bool));
+            }
+        }
+    }
 
     #[test]
     fn well_typed_and_or_identity() {
