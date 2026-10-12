@@ -155,11 +155,27 @@ pub fn eval(program: &Program, inputs: &[Value]) -> Result<Value, EvalError> {
         }
         store.insert(param.name.clone(), *val);
     }
-    let out = eval_expr(&store, &program.body)?;
+    let out = eval_expr_checked(&store, &program.body)?;
     if out.ty() != program.ret_ty {
         return Err(EvalError::Runtime("return type mismatch".into()));
     }
     Ok(out)
+}
+
+/// Checked entry for caller-constructed stores. `eval_expr` is the extracted
+/// interpreter and requires canonical bitvector payloads for rewrite soundness.
+/// Keep its source unchanged; enforce that precondition at this public boundary.
+pub fn eval_expr_checked(store: &HashMap<String, Value>, expr: &Expr) -> Result<Value, EvalError> {
+    for value in store.values() {
+        if let Value::BitVec { width, bits } = value {
+            if *bits != (*bits & width.mask()) {
+                return Err(EvalError::Runtime(
+                    "noncanonical bitvector input; use Value::bitvec".into(),
+                ));
+            }
+        }
+    }
+    eval_expr(store, expr)
 }
 
 /// Observational equivalence on a finite input sample.
@@ -268,6 +284,68 @@ mod tests {
             assert_eq!(
                 eval(&p, &[Value::bitvec(Width::U64, 7)]).unwrap(),
                 Value::bitvec(Width::U64, 0)
+            );
+        }
+    }
+
+    #[test]
+    fn noncanonical_payloads_cannot_break_checked_program_rewrites() {
+        for width in [Width::U8, Width::U16, Width::U32] {
+            let p = parse_program(&format!("fn p(x: {width}) -> {width} {{ or(x,x) }}")).unwrap();
+            let q = parse_program(&format!("fn q(x: {width}) -> {width} {{ x }}")).unwrap();
+            assert!(p.check().is_ok() && q.check().is_ok());
+            let forged = Value::BitVec {
+                width,
+                bits: 1u64 << width.bits(),
+            };
+            for program in [&p, &q] {
+                assert!(
+                    matches!(eval(program, &[forged]), Err(EvalError::Runtime(ref error)) if error.contains("noncanonical"))
+                );
+            }
+            let canonical = Value::bitvec(width, 1u64 << width.bits());
+            assert_eq!(
+                eval(&p, &[canonical]).unwrap(),
+                eval(&q, &[canonical]).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn checked_expression_boundary_and_all_u64_values_remain_defined() {
+        let expr = Expr::Var { name: "x".into() };
+        let mut store = HashMap::new();
+        store.insert(
+            "x".into(),
+            Value::BitVec {
+                width: Width::U8,
+                bits: 256,
+            },
+        );
+        assert!(matches!(
+            eval_expr_checked(&store, &expr),
+            Err(EvalError::Runtime(_))
+        ));
+        // The low-level reference interpreter remains unchanged and its WF
+        // hypothesis remains explicit rather than silently changing its meaning.
+        assert_eq!(
+            eval_expr(&store, &expr).unwrap(),
+            Value::BitVec {
+                width: Width::U8,
+                bits: 256
+            }
+        );
+        for bits in [0, 1, u64::MAX] {
+            store.insert(
+                "x".into(),
+                Value::BitVec {
+                    width: Width::U64,
+                    bits,
+                },
+            );
+            assert_eq!(
+                eval_expr_checked(&store, &expr).unwrap(),
+                Value::bitvec(Width::U64, bits)
             );
         }
     }
